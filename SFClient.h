@@ -4,9 +4,6 @@
 #include <ArduinoJson.h>
 #include "Client.h"
 
-static const int E_OK = 0;
-static const int E_NOCONNECTION = -1;
-
 static const char* DEFAULT_HOST_LOGIN = "login.salesforce.com";
 static const char* DEFAULT_HOST_INSTANCE = "na35.salesforce.com";
 static const int DEFAULT_PORT = 443;
@@ -41,6 +38,7 @@ class SFClient
     int _port;
 
     int initSettings(String resp);
+    String getHttpCode(String resp);
 };
 
 #endif

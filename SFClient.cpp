@@ -1,5 +1,8 @@
 #include "SFClient.h"
 
+static const int E_OK = 0;
+static const int E_NOCONNECTION = -1;
+
 SFClient::SFClient(Client* client,
                   const char* clientId,
                   const char* clientSecret,
@@ -21,10 +24,16 @@ int SFClient::connect(void)
 {
   if(!_client->connect(_hostLogin, _port))
   {
-    return E_NOCONNECTION;
+    return -1;
   }
 
-  return E_OK;
+  return 0;
+}
+
+String SFClient::getHttpCode(String resp)
+{
+  int periodIndex = resp.indexOf('.');
+  return resp.substring(periodIndex + 3, periodIndex + 6);
 }
 
 int SFClient::authenticate(const char* username, const char* password)
@@ -42,26 +51,40 @@ int SFClient::authenticate(const char* username, const char* password)
     "Content-Type: application/x-www-form-urlencoded\r\n" +
     "Content-Length: " + strBuff.length() + "\r\n\r\n" + strBuff;
 
-  _client->print(request);
-
   String response = "";
   String chunk = "";
   int limit = 0;
   int sendCount = 0;
 
-  do
+  if(_client->connected())
   {
-    if (_client->connected())
+    _client->print(request);
+
+    do
     {
-      chunk = _client->readStringUntil('\n');
-      response += chunk;
+      if (_client->connected())
+      {
+        chunk = _client->readStringUntil('\n');
+        response += chunk;
+      }
+      limit++;
+    } while (chunk.length() > 0 && limit < 100);
+  }
+  else
+  {
+    if(connect() == 0)
+    {
+      int retCode = authenticate(username, password);
+      if(retCode == 0)
+      {
+        return 0;
+      }
     }
-    limit++;
-  } while (chunk.length() > 0 && limit < 100);
+  }
 
   if (response.length() > 12)
   {
-    String httpCode = response.substring(9, 12);
+    String httpCode = getHttpCode(response);
     if(httpCode == "200")
     {
       String respBody = response.substring(response.indexOf('{'), response.indexOf('}') + 1);
@@ -112,26 +135,40 @@ int SFClient::createRecord(const char* sObjectName, JsonObject& object)
     "Content-Type: application/json\r\n" +
     "Content-Length: " + strBuff.length() + "\r\n\r\n" + strBuff;
 
-  _client->print(request);
-
   String response = "";
   String chunk = "";
   int limit = 0;
   int sendCount = 0;
 
-  do
+  if(_client->connected())
   {
-    if (_client->connected())
+    _client->print(request);
+
+    do
     {
-      chunk = _client->readStringUntil('\n');
-      response += chunk;
+      if (_client->connected())
+      {
+        chunk = _client->readStringUntil('\n');
+        response += chunk;
+      }
+      limit++;
+    } while (chunk.length() > 0 && limit < 100);
+  }
+  else
+  {
+    if(connect() == 0)
+    {
+      int retCode = createRecord(sObjectName, object);
+      if(retCode == 0)
+      {
+        return 0;
+      }
     }
-    limit++;
-  } while (chunk.length() > 0 && limit < 100);
+  }
 
   if (response.length() > 12)
   {
-    String httpCode = response.substring(9, 12);
+    String httpCode = getHttpCode(response);
     if(httpCode == "201")
     {
       return 0;
