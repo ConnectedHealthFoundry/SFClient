@@ -2,6 +2,8 @@
 
 static const int E_OK = 0;
 static const int E_NOCONNECTION = -1;
+static const int E_UNAUTHORIZED = -2;
+static const int E_SOBJECT_ERROR = -3;
 
 SFClient::SFClient(Client* client,
                   const char* clientId,
@@ -20,14 +22,14 @@ SFClient::SFClient(Client* client,
   _port = port;
 }
 
-int SFClient::connect(void)
+int SFClient::connect(const char *host, int port)
 {
-  if(!_client->connect(_hostLogin, _port))
+  if(!_client->connect(host, port))
   {
-    return -1;
+    return E_NOCONNECTION;
   }
 
-  return 0;
+  return E_OK;
 }
 
 String SFClient::getHttpCode(String resp)
@@ -38,6 +40,12 @@ String SFClient::getHttpCode(String resp)
 
 int SFClient::authenticate(const char* username, const char* password)
 {
+  connect(_hostLogin);
+  while(!_client->connected())
+  {
+    connect(_hostLogin);
+  }
+
   _username = username;
   _password = password;
 
@@ -56,31 +64,17 @@ int SFClient::authenticate(const char* username, const char* password)
   int limit = 0;
   int sendCount = 0;
 
-  if(_client->connected())
+  _client->print(request);
+  do
   {
-    _client->print(request);
-
-    do
+    if (_client->connected())
     {
-      if (_client->connected())
-      {
-        chunk = _client->readStringUntil('\n');
-        response += chunk;
-      }
-      limit++;
-    } while (chunk.length() > 0 && limit < 100);
-  }
-  else
-  {
-    if(connect() == 0)
-    {
-      int retCode = authenticate(username, password);
-      if(retCode == 0)
-      {
-        return 0;
-      }
+      chunk = _client->readStringUntil('\n');
+      response += chunk;
     }
-  }
+    limit++;
+  } while (chunk.length() > 0 && limit < 100);
+  close();
 
   if (response.length() > 12)
   {
@@ -89,21 +83,16 @@ int SFClient::authenticate(const char* username, const char* password)
     {
       String respBody = response.substring(response.indexOf('{'), response.indexOf('}') + 1);
       int retCode = initSettings(respBody);
-      if(retCode != 0)
+      if(retCode != E_OK)
       {
-        return -1;
-      }
-
-      if(!_client->connect(_hostInstance, _port))
-      {
-        return E_NOCONNECTION;
+        return E_UNAUTHORIZED;
       }
 
       return E_OK;
     }
   }
 
-  return -1;
+  return E_UNAUTHORIZED;
 }
 
 int SFClient::initSettings(String resp)
@@ -118,11 +107,17 @@ int SFClient::initSettings(String resp)
 
   _accessToken = root["access_token"].asString();
 
-  return 0;
+  return E_OK;
 }
 
 int SFClient::createRecord(const char* sObjectName, JsonObject& object)
 {
+  connect(_hostInstance);
+  while(!_client->connected())
+  {
+    connect(_hostInstance);
+  }
+
   char buff[object.measureLength() + 1];
   object.printTo(buff, sizeof(buff));
   String strBuff(buff);
@@ -140,52 +135,52 @@ int SFClient::createRecord(const char* sObjectName, JsonObject& object)
   int limit = 0;
   int sendCount = 0;
 
-  if(_client->connected())
+  _client->print(request);
+  do
   {
-    _client->print(request);
-
-    do
+    if (_client->connected())
     {
-      if (_client->connected())
-      {
-        chunk = _client->readStringUntil('\n');
-        response += chunk;
-      }
-      limit++;
-    } while (chunk.length() > 0 && limit < 100);
-  }
-  else
-  {
-    if(connect() == 0)
-    {
-      int retCode = createRecord(sObjectName, object);
-      if(retCode == 0)
-      {
-        return 0;
-      }
+      chunk = _client->readStringUntil('\n');
+      response += chunk;
     }
-  }
+    limit++;
+  } while (chunk.length() > 0 && limit < 100);
+  close();
 
   if (response.length() > 12)
   {
     String httpCode = getHttpCode(response);
     if(httpCode == "201")
     {
-      return 0;
+      return E_OK;
     }
     else if(httpCode == "401")
     {
-      int retCode = authenticate(_username, _password);
-      if(retCode == 0)
+      Serial.println(response);
+
+      if(connect(_hostLogin) != E_OK)
       {
-        retCode = createRecord(sObjectName, object);
-        if(retCode == 0)
-        {
-          return 0;
-        }
+        return E_NOCONNECTION;
+      }
+
+      if(authenticate(_username, _password) != E_OK)
+      {
+        return E_UNAUTHORIZED;
+      }
+
+      if(createRecord(sObjectName, object) == E_OK)
+      {
+        return E_OK;
       }
     }
   }
+  Serial.println(response);
 
-  return -1;
+  return E_SOBJECT_ERROR;
+}
+
+void SFClient::close(void)
+{
+  _client->flush();
+  _client->stop();
 }

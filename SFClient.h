@@ -1,6 +1,7 @@
 #ifndef SFCLIENT_H
 #define SFCLIENT_H
 
+#include <Arduino.h>
 #include <ArduinoJson.h>
 #include "Client.h"
 
@@ -21,7 +22,7 @@ class SFClient
               const char* hostInstance = DEFAULT_HOST_INSTANCE,
               int port = DEFAULT_PORT);
 
-    int connect(void);
+    int connect(const char *host = DEFAULT_HOST_LOGIN, int port = DEFAULT_PORT);
     int authenticate(const char* username, const char* password);
     int createRecord(const char* sObjectName, JsonObject& object);
 
@@ -39,6 +40,7 @@ class SFClient
 
     int initSettings(String resp);
     String getHttpCode(String resp);
+    void close(void);
 };
 
 #endif
